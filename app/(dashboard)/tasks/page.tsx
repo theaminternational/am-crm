@@ -166,12 +166,25 @@ export default function TasksPage() {
         await updateDoc(doc(db, "tasks", editing.id), payload);
       } else {
 
-        await addDoc(collection(db, "tasks"), {
+        const newTaskRef = await addDoc(collection(db, "tasks"), {
           ...payload,
           progress: 0,
           done: false,
           createdAt: now,
         });
+
+        // Create a notification for the assignee
+        if (form.assignedTo && form.assignedTo !== crmUser?.uid) {
+          await addDoc(collection(db, "notifications"), {
+            userId: form.assignedTo,
+            title: "New Task Assigned",
+            message: `You have been assigned a new task: ${form.title}`,
+            link: `/tasks/${newTaskRef.id}?tab=blueprints`,
+            read: false,
+            createdAt: now,
+            type: "task-assigned"
+          });
+        }
 
         // Send task assignment email to employee only
         if (member?.email) {

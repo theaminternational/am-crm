@@ -3,21 +3,32 @@ import { Rocket, MessageSquare, Check, Target, Clipboard } from "lucide-react";
 
 
 import { useEffect, useState, useRef } from "react";
-import { doc, onSnapshot, updateDoc, arrayUnion, getDocs, collection, query, where } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, updateDoc, arrayUnion, getDocs, collection, query, where, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function TaskOperationalSheet({ params }: { params: { id: string } }) {
   const { id } = params;
   const { crmUser } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   
   const [task, setTask] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
-  const [activeTab, setActiveTab] = useState<"blueprints" | "chat">("blueprints");
+  const initialTab = searchParams.get("tab") === "chat" ? "chat" : "blueprints";
+  const [activeTab, setActiveTab] = useState<"blueprints" | "chat">(initialTab);
+
+  // Sync tab state if URL query param changes without full page reload
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "chat" || tab === "blueprints") {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
   const [localProgress, setLocalProgress] = useState(0);
   const [localDesc, setLocalDesc] = useState("");
   
@@ -26,6 +37,8 @@ export default function TaskOperationalSheet({ params }: { params: { id: string 
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const [parentProject, setParentProject] = useState<any>(null);
+
   useEffect(() => {
     if (!id) return;
     
@@ -33,13 +46,25 @@ export default function TaskOperationalSheet({ params }: { params: { id: string 
     setLocalProgress(0);
     setLocalDesc("");
     setTask(null);
+    setParentProject(null);
     setLoading(true);
 
-    const unsub = onSnapshot(doc(db, "tasks", id), (docSnap) => {
+    const unsub = onSnapshot(doc(db, "tasks", id), async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setTask({ id: docSnap.id, ...data });
         
+        if (data.relatedTo) {
+          try {
+            const projDoc = await getDoc(doc(db, "projects", data.relatedTo));
+            if (projDoc.exists()) {
+              setParentProject(projDoc.data());
+            }
+          } catch (e) {
+            console.error("Failed to fetch parent project", e);
+          }
+        }
+
         let p = data.progress;
         if (p === undefined) {
           if (data.status === "dev") p = 25;
@@ -82,7 +107,8 @@ export default function TaskOperationalSheet({ params }: { params: { id: string 
     );
   }
 
-  const projectBlueprint = task.masterBlueprint || task.projectSummary || "";
+  const projectBlueprint = task.masterBlueprint || parentProject?.masterBlueprint || task.projectSummary || "";
+  const leadInstructions = task.leadInstructions || parentProject?.leadInstructions || "";
   const taskInstructions = task.taskInstructions || task.description || "No specific instructions provided for this individual task.";
 
   const handleUpdateLog = async () => {
@@ -100,6 +126,21 @@ export default function TaskOperationalSheet({ params }: { params: { id: string 
       await updateDoc(doc(db, "tasks", task.id), { 
         activityLogs: arrayUnion(newLog)
       });
+
+      // Create notification for the other party
+      const recipientUid = crmUser?.uid === task.assignedTo ? task.assignedBy : task.assignedTo;
+      if (recipientUid) {
+        await addDoc(collection(db, "notifications"), {
+          userId: recipientUid,
+          title: "New Message",
+          message: `${crmUser?.name} sent a message on task: ${task.title}`,
+          link: `/tasks/${task.id}?tab=chat`,
+          read: false,
+          createdAt: new Date().toISOString(),
+          type: "new-message"
+        });
+      }
+
       setLocalDesc("");
     } catch (err) {
       console.error(err);
@@ -150,6 +191,19 @@ export default function TaskOperationalSheet({ params }: { params: { id: string 
       status: newStatus,
       done: newProgress === 100
     });
+
+    // Notify assignedBy when assignedTo updates progress
+    if (crmUser?.uid === task.assignedTo && task.assignedBy) {
+      await addDoc(collection(db, "notifications"), {
+        userId: task.assignedBy,
+        title: "Task Progress Updated",
+        message: `${crmUser?.name} updated task progress to ${newProgress}% on: ${task.title}`,
+        link: `/tasks/${task.id}`,
+        read: false,
+        createdAt: new Date().toISOString(),
+        type: "system"
+      });
+    }
     
     if (task.relatedType === "project" && task.relatedTo) {
       const q = query(collection(db, "tasks"), where("relatedTo", "==", task.relatedTo));
@@ -237,16 +291,31 @@ export default function TaskOperationalSheet({ params }: { params: { id: string 
               className="space-y-6"
             >
               <div className="space-y-6 flex-1 pr-2">
-                {/* Project Context */}
+                {/* Project Master Blueprint */}
                 {projectBlueprint && (
                   <div>
-                    <h4 className="text-[10px] font-black text-amber-500/80 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                       {"// Project Master Blueprint"}
                     </h4>
-                    <div className="bg-amber-50/50 p-6 rounded-2xl border border-amber-100/50 shadow-inner mb-6">
-                      <p className="text-[14px] text-slate-700 leading-loose whitespace-pre-wrap font-medium">
+                    <div className="bg-amber-50/60 p-6 rounded-2xl border border-amber-200/70 shadow-inner mb-6">
+                      <p className="text-[14px] text-slate-800 leading-loose whitespace-pre-wrap font-medium">
                         {projectBlueprint}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Project Lead Dynamic Instructions */}
+                {leadInstructions && (
+                  <div>
+                    <h4 className="text-[10px] font-black text-purple-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                      {"// Project Lead Directives & Standing Orders"}
+                    </h4>
+                    <div className="bg-purple-50/60 p-6 rounded-2xl border border-purple-200/70 shadow-inner mb-6">
+                      <p className="text-[14px] text-purple-950 leading-loose whitespace-pre-wrap font-semibold">
+                        {leadInstructions}
                       </p>
                     </div>
                   </div>
@@ -254,12 +323,12 @@ export default function TaskOperationalSheet({ params }: { params: { id: string 
 
                 {/* Specific Task Instructions */}
                 <div>
-                  <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-3 flex items-center gap-2">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                    {"// Specific Task Instructions"}
+                    {"// Specific Task Assignment Instructions"}
                   </h4>
-                  <div className="bg-blue-50/40 p-6 rounded-2xl border border-blue-100 shadow-inner">
-                    <p className="text-[14px] text-slate-700 leading-loose whitespace-pre-wrap font-medium">
+                  <div className="bg-blue-50/60 p-6 rounded-2xl border border-blue-200/70 shadow-inner">
+                    <p className="text-[14px] text-slate-800 leading-loose whitespace-pre-wrap font-medium">
                       {taskInstructions}
                     </p>
                   </div>

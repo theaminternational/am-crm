@@ -32,6 +32,18 @@ const SERVICES: { key: ServiceTag; label: string; bg: string; text: string }[] =
   { key: "other",             label: "Other",             bg: "#f3f4f6", text: "#374151" },
 ];
 
+const SERVICE_TECH_STACKS: Record<string, string[]> = {
+  "web-development": ["Next.js", "React", "TypeScript", "Tailwind CSS", "Node.js", "Firestore", "Three.js", "GSAP"],
+  "ui-ux": ["Figma", "Design System", "Framer", "Prototyping", "Wireframing", "Tailwind CSS"],
+  "digital-marketing": ["Meta Ads", "Google Ads", "Analytics", "HubSpot", "SEO Audit", "Content Strategy"],
+  "seo": ["Google Search Console", "Ahrefs", "Semrush", "Technical SEO", "Schema Markup", "PageSpeed"],
+  "social-media": ["Meta Business Suite", "Canva", "TikTok Ads", "Copywriting", "Video Editing", "Content Calendar"],
+  "branding": ["Brand Guidelines", "Logo Vectors", "Typography", "Color Palette", "Brand Deck"],
+  "technology-services": ["AWS", "Azure", "Docker", "Kubernetes", "CI/CD", "Microservices", "REST API"],
+  "oracle-epm": ["Oracle Cloud EPM", "FCC", "PBCS", "Financial Consolidation", "Essbase", "Smart View"],
+  "other": ["Custom Stack", "Cloud Infra", "API Integration", "Database"]
+};
+
 const CURRENCIES = [
   { code: "AED", label: "AED (Dirham)" },
   { code: "USD", label: "USD (Dollar)" },
@@ -461,23 +473,7 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Status filter (for active column) */}
-      <div className="flex gap-2 mb-8 flex-wrap">
-        {[{ key: "all", label: "All Active", color: "#6b7280", bg: "#f3f4f6" }, ...STATUSES.filter(s => s.key !== "completed")].map((s) => (
-          <button
-            key={s.key}
-            onClick={() => setStatusFilter(s.key as any)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: statusFilter === s.key ? s.bg : "#f9fafb",
-              color: statusFilter === s.key ? s.color : "#9ca3af",
-              border: `1px solid ${statusFilter === s.key ? s.color + "44" : "#e5e7eb"}`,
-            }}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      {/* Status filter handled by side panel */}
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -795,7 +791,7 @@ export default function ProjectsPage() {
                 <div className="mb-4">
                   <label className="form-label">Core Architecture Stack (Select framework environments)</label>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {["Next.js", "Three.js", "Tailwind", "Node.js", "Firestore", "GSAP"].map((tech) => {
+                    {((SERVICE_TECH_STACKS as any)[form.service] || ["Next.js", "Three.js", "Tailwind", "Node.js", "Firestore", "GSAP"]).map((tech: string) => {
                       const selected = form.techStack.includes(tech);
                       return (
                         <button
@@ -809,8 +805,8 @@ export default function ProjectsPage() {
                           }}
                           className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                             selected 
-                              ? "bg-[#0D1B3E] text-white border-[#0D1B3E]" 
-                              : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                              ? "bg-[#0D1B3E] text-[#C9A84C] border-[#0D1B3E] font-bold" 
+                              : "bg-white text-slate-600 border-slate-200 hover:border-[#0D1B3E]"
                           }`}
                         >
                           {tech}

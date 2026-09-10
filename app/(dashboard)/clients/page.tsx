@@ -339,19 +339,6 @@ export default function ClientsPage() {
           onFocus={(e) => (e.target.style.borderColor = "#C9A84C")}
           onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
         />
-        {["all", "active", "inactive"].map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s as any)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all"
-            style={{
-              background: statusFilter === s ? "#0D1B3E" : "#f3f4f6",
-              color: statusFilter === s ? "white" : "#6b7280",
-            }}
-          >
-            {s}
-          </button>
-        ))}
       </div>
 
       {/* Client List */}
