@@ -1,5 +1,5 @@
 "use client";
-import { X, Handshake, Calendar, Pencil, Settings, Zap, Hammer, AlarmClock, Trash2 } from "lucide-react";
+import { X, Handshake, Calendar, Pencil, Settings, Zap, Hammer, AlarmClock } from "lucide-react";
 
 
 import { useEffect, useState } from "react";
@@ -41,7 +41,7 @@ const TASK_TYPES = [
 ];
 
 const EMPTY_FORM = {
-  title: "", description: "", assignedTo: "", assignedToName: "",
+  title: "", description: "", assignedTo: [] as string[], assignedToName: [] as string[],
   clientId: "", clientName: "", dueDate: "", time: "",
   priority: "medium" as TaskPriority,
   status: "not-started",
@@ -111,13 +111,14 @@ export default function TasksPage() {
     return () => { unsubTasks(); unsubUsers(); unsubClients(); unsubProjects(); };
   }, [crmUser, viewMode]);
 
-  function openAdd() { setEditing(null); setForm({ ...EMPTY_FORM, assignedTo: crmUser?.uid ?? "" }); setShowModal(true); }
+  function openAdd() { setEditing(null); setForm({ ...EMPTY_FORM, assignedTo: crmUser?.uid ? [crmUser.uid] : [] }); setShowModal(true); }
   
   function openEdit(t: any) {
     setEditing(t);
     setForm({ 
-      title: t.title, description: t.description ?? "", assignedTo: t.assignedTo ?? "", 
-      assignedToName: t.assignedToName ?? "", clientId: t.clientId ?? "", clientName: t.clientName ?? "", 
+      title: t.title, description: t.description ?? "", assignedTo: Array.isArray(t.assignedTo) ? t.assignedTo : (t.assignedTo ? [t.assignedTo] : []), 
+      assignedToName: Array.isArray(t.assignedToName) ? t.assignedToName : (t.assignedToName ? [t.assignedToName] : []), 
+      clientId: t.clientId ?? "", clientName: t.clientName ?? "", 
       dueDate: t.dueDate ?? "", time: t.time ?? "", priority: t.priority, status: t.status ?? "not-started", 
       taskType: t.taskType ?? "admin-action", relatedTo: t.relatedTo ?? "", relatedType: t.relatedType ?? ""
     });
@@ -132,12 +133,29 @@ export default function TasksPage() {
       const docRef = await addDoc(collection(db, "projects"), {
         title: form.title, clientName: form.clientName, clientId: form.clientId,
         status: "in-progress", service: "web-development", createdAt: now, updatedAt: now,
-        assignedTo: form.assignedTo ? [form.assignedTo] : []
+        assignedTo: form.assignedTo || []
       });
       setForm(f => ({ ...f, relatedTo: docRef.id, relatedType: "project" }));
       alert("Project created and linked!");
     } catch (e) { console.error(e); alert("Failed to create project"); } 
     finally { setCreatingProject(false); }
+  }
+
+  async function sendReminderEmail(taskData: any, email: string, name: string) {
+    try {
+      const html = `<div style="padding:40px 20px;font-family:Arial,sans-serif;background:#f8f9fc;"><div style="max-width:600px;margin:0 auto;background:white;border-radius:12px;padding:32px;box-shadow:0 4px 12px rgba(0,0,0,0.05);"><h2 style="color:#0D1B3E;">Task Deadline Reminder</h2><p>Hi ${name},</p><p>This is a reminder that the task <strong>${taskData.title}</strong> is due tomorrow.</p></div></div>`;
+      await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: [email],
+          subject: `Reminder: Task Due Tomorrow - ${taskData.title}`,
+          html,
+        }),
+      });
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   async function handleSave() {
@@ -173,257 +191,64 @@ export default function TasksPage() {
           createdAt: now,
         });
 
-        // Create a notification for the assignee
-        if (form.assignedTo && form.assignedTo !== crmUser?.uid) {
-          await addDoc(collection(db, "notifications"), {
-            userId: form.assignedTo,
-            title: "New Task Assigned",
-            message: `You have been assigned a new task: ${form.title}`,
-            link: `/tasks/${newTaskRef.id}?tab=blueprints`,
-            read: false,
-            createdAt: now,
-            type: "task-assigned"
-          });
-        }
+        // Create notifications and send emails for all assignees
+        for (const assigneeUid of form.assignedTo) {
+          const member = members.find((m) => m.uid === assigneeUid);
+          if (!member) continue;
 
-        // Send task assignment email to employee only
-        if (member?.email) {
-          try {
-            const projectName = form.relatedTo
-              ? projects.find((p) => p.id === form.relatedTo)?.title || ""
-              : "";
-
-            const html = `
-              <!DOCTYPE html>
-              <html>
-              <head>
-                <meta charset="UTF-8" />
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <title>New Task Assigned</title>
-              </head>
-
-              <body style="
-                margin: 0;
-                padding: 0;
-                background-color: #f5f6fa;
-                font-family: Arial, Helvetica, sans-serif;
-              ">
-
-                <table
-                  width="100%"
-                  cellpadding="0"
-                  cellspacing="0"
-                  border="0"
-                  style="
-                    background-color: #f5f6fa;
-                    padding: 52px 20px;
-                  "
-                >
-                  <tr>
-                    <td align="center">
-
-                      <!-- Main Card -->
-                      <table
-                        width="750"
-                        cellpadding="0"
-                        cellspacing="0"
-                        border="0"
-                        style="
-                          width: 750px;
-                          max-width: 100%;
-                          background-color: #ffffff;
-                          border-radius: 16px;
-                          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.07);
-                        "
-                      >
-
-                        <!-- Header -->
-                        <tr>
-                          <td
-                            align="center"
-                            style="
-                              padding-top: 38px;
-                              padding-bottom: 128px;
-                            "
-                          >
-                            <div style="
-                              font-size: 30px;
-                              line-height: 36px;
-                              font-weight: 700;
-                              color: #C9A84C;
-                            ">
-                              A&amp;M CRM
-                            </div>
-                          </td>
-                        </tr>
-
-                        <!-- Greeting -->
-                        <tr>
-                          <td style="
-                            padding: 0 40px;
-                          ">
-
-                            <div style="
-                              font-size: 20px;
-                              line-height: 30px;
-                              color: #20243A;
-                              margin-bottom: 10px;
-                            ">
-                              Hi <strong>${member.name || "there"}</strong>,
-                            </div>
-
-                            <div style="
-                              font-size: 18px;
-                              line-height: 28px;
-                              color: #70788A;
-                              margin-bottom: 29px;
-                            ">
-                              A new task has been assigned to you in the CRM.
-                            </div>
-
-                          </td>
-                        </tr>
-
-                        <!-- Task Box -->
-                        <tr>
-                          <td style="
-                            padding: 0 40px;
-                          ">
-
-                            <table
-                              width="100%"
-                              cellpadding="0"
-                              cellspacing="0"
-                              border="0"
-                              style="
-                                background-color: #F7F8FB;
-                                border-left: 5px solid #C9A84C;
-                                border-radius: 0 12px 12px 0;
-                              "
-                            >
-                              <tr>
-                                <td style="
-                                  padding: 27px 30px 30px 30px;
-                                ">
-
-                                  <!-- Task Title -->
-                                  <div style="
-                                    font-size: 25px;
-                                    line-height: 32px;
-                                    font-weight: 700;
-                                    color: #17213F;
-                                    margin-bottom: 5px;
-                                  ">
-                                    ${form.title}
-                                  </div>
-
-                                  <!-- Project -->
-                                  ${
-                                    projectName
-                                      ? `
-                                        <div style="
-                                          font-size: 17px;
-                                          line-height: 26px;
-                                          color: #4F5668;
-                                        ">
-                                          <strong>Project:</strong> ${projectName}
-                                        </div>
-                                      `
-                                      : ""
-                                  }
-
-                                </td>
-                              </tr>
-                            </table>
-
-                          </td>
-                        </tr>
-
-                        <!-- Footer -->
-                        <tr>
-                          <td
-                            align="center"
-                            style="
-                              padding: 48px 40px 52px 40px;
-                            "
-                          >
-                            <div style="
-                              font-size: 14px;
-                              line-height: 20px;
-                              color: #9AA2B3;
-                            ">
-                              The A&amp;M Internationals FZC
-                              &nbsp;·&nbsp;
-                              Elevating the World, Elegantly
-                            </div>
-                          </td>
-                        </tr>
-
-                      </table>
-
-                    </td>
-                  </tr>
-                </table>
-
-              </body>
-              </html>
-            `;
-
-            const emailResponse = await fetch("/api/send-email", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                to: [member.email],
-                subject: `CRM Task Assigned: ${form.title}`,
-                html,
-              }),
+          // Notification
+          if (assigneeUid !== crmUser?.uid) {
+            await addDoc(collection(db, "notifications"), {
+              userId: assigneeUid,
+              title: "New Task Assigned",
+              message: `You have been assigned a new task: ${form.title}`,
+              link: `/tasks/${newTaskRef.id}?tab=blueprints`,
+              read: false,
+              createdAt: now,
+              type: "task-assigned"
             });
+          }
 
-            if (!emailResponse.ok) {
-              const errorData = await emailResponse.text();
-              console.error("Task assignment email failed:", errorData);
-            } else {
-              console.log(`Task assignment email sent to ${member.email}`);
+          // Email
+          if (member.email) {
+            try {
+              const projectName = form.relatedTo
+                ? projects.find((p) => p.id === form.relatedTo)?.title || ""
+                : "";
+
+              const emailResponse = await fetch("/api/send-email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  to: [member.email],
+                  subject: `CRM Task Assigned: ${form.title}`,
+                  html: `<div style="padding:40px 20px;font-family:Arial,sans-serif;background:#f8f9fc;"><div style="max-width:600px;margin:0 auto;background:white;border-radius:12px;padding:32px;box-shadow:0 4px 12px rgba(0,0,0,0.05);"><h2 style="color:#0D1B3E;">New Task Assigned</h2><p>Hi ${member.name},</p><p>You have been assigned the task: <strong>${form.title}</strong></p><p>Priority: ${form.priority.toUpperCase()}</p>${projectName ? `<p>Project: ${projectName}</p>` : ''}</div></div>`
+                }),
+              });
+            } catch (e) {
+              console.error("Task assignment email error:", e);
             }
-          } catch (emailError) {
-            console.error("Task assignment email error:", emailError);
+
+            // Check if due date is tomorrow � send reminder
+            if (form.dueDate) {
+              const due = new Date(form.dueDate);
+              const tomorrow = new Date();
+              tomorrow.setDate(tomorrow.getDate() + 1);
+
+              if (due.toDateString() === tomorrow.toDateString()) {
+                await sendReminderEmail({ ...form }, member.email, member.name);
+              }
+            }
           }
         }
-      }
-
-      // Check if due date is tomorrow — send reminder
-      if (form.dueDate && member?.email) {
-        const due = new Date(form.dueDate);
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-
-        if (due.toDateString() === tomorrow.toDateString()) {
-          try {
-            await fetch("/api/send-email", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                to: [member.email],
-                subject: `Task Due Tomorrow: ${form.title}`,
-                html: `<div style="padding:20px;font-family:sans-serif;"><h3>Hi ${member.name},</h3><p>Reminder that your task <strong>"${form.title}"</strong> is due tomorrow (${form.dueDate}).</p></div>`,
-              }),
-            });
-          } catch (e) {
-            console.error("Reminder email error:", e);
-          }
-        }
-      }
+      } // Close the 'else' block
       setShowModal(false);
     } finally { setSaving(false); }
   }
 
   async function toggleDone(task: any) {
-    if (crmUser?.role === "admin" && task.assignedTo !== crmUser?.uid) {
-      alert("Action Restricted: Admins cannot update an employee's progress on their tasks.");
+    if (crmUser?.role === "admin" && !(Array.isArray(task.assignedTo) ? task.assignedTo.includes(crmUser?.uid) : task.assignedTo === crmUser?.uid)) {
+      alert("Action Restricted: As an admin, please allow the assigned project managers and employees to update their own task progress.");
       return;
     }
     const newStatus = task.status === "completed" ? "in-progress" : "completed";
@@ -436,8 +261,8 @@ export default function TasksPage() {
   }
 
   async function updateStatus(task: any, status: string) {
-    if (crmUser?.role === "admin" && task.assignedTo !== crmUser?.uid) {
-      alert("Action Restricted: Admins cannot update an employee's progress on their tasks.");
+    if (crmUser?.role === "admin" && !(Array.isArray(task.assignedTo) ? task.assignedTo.includes(crmUser?.uid) : task.assignedTo === crmUser?.uid)) {
+      alert("Action Restricted: As an admin, please allow the assigned project managers and employees to update their own task progress.");
       return;
     }
     await PipelineService.handleTaskStatusUpdate(task, status, crmUser?.uid ?? "");
@@ -445,7 +270,7 @@ export default function TasksPage() {
 
   const filteredTasks = tasks.filter(t => {
     if (viewMode === "team") {
-      if (t.assignedTo === crmUser?.uid) return false;
+      if ((Array.isArray(t.assignedTo) ? t.assignedTo.includes(crmUser?.uid) : t.assignedTo === crmUser?.uid)) return false;
       if (t.relatedType === "lead") return false; // Hide all lead follow-ups from team view
     }
     if (typeFilter !== "all" && t.taskType !== typeFilter) return false;
@@ -460,7 +285,7 @@ export default function TasksPage() {
 
   const handleDrop = (e: React.DragEvent, statusKey: string) => {
     e.preventDefault();
-    const taskId = e.dataTransfer.getData("taskId");
+    const taskId = e.dataTransfer.getData("text/plain");
     const task = tasks.find(t => t.id === taskId);
     if (task && task.status !== statusKey) {
       updateStatus(task, statusKey);
@@ -573,7 +398,7 @@ export default function TasksPage() {
                           layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
                           key={task.id} 
                           draggable
-                          onDragStart={(e: any) => e.dataTransfer.setData("taskId", task.id)}
+                          onDragStart={(e: any) => e.dataTransfer.setData("text/plain", task.id)}
                           onClick={(e) => {
                             if (task.relatedType === "lead") {
                               return; // No specific page for lead follow-ups
@@ -712,11 +537,37 @@ export default function TasksPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Owner</label>
-                  <select disabled={crmUser?.role === "employee"} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 font-medium text-slate-800 outline-none focus:border-[#C9A84C] transition-colors disabled:bg-slate-50 disabled:text-slate-500" value={form.assignedTo} onChange={e => { const m = members.find(x => x.uid === e.target.value); setForm({ ...form, assignedTo: e.target.value, assignedToName: m?.name ?? "" }); }}>
-                    <option value="">Unassigned</option>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Owners</label>
+                  <select 
+                    disabled={crmUser?.role === "employee"} 
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 font-medium text-slate-800 outline-none focus:border-[#C9A84C] transition-colors disabled:bg-slate-50 disabled:text-slate-500" 
+                    onChange={e => { 
+                      const uid = e.target.value;
+                      if (!uid) return;
+                      const arr = Array.isArray(form.assignedTo) ? form.assignedTo : (form.assignedTo ? [form.assignedTo] : []);
+                      if (!arr.includes(uid)) {
+                        setForm({ ...form, assignedTo: [...arr, uid] });
+                      }
+                      e.target.value = ""; 
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Select employees...</option>
                     {members.map(m => <option key={m.uid} value={m.uid}>{m.name}</option>)}
                   </select>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {Array.isArray(form.assignedTo) && form.assignedTo.map((uid: string) => {
+                      const m = members.find(x => x.uid === uid);
+                      return (
+                        <div key={uid} className="flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md text-[10px] font-bold border border-indigo-100">
+                          {m?.name || "Unknown"}
+                          {crmUser?.role !== "employee" && (
+                            <button type="button" onClick={() => setForm({ ...form, assignedTo: form.assignedTo.filter((u: string) => u !== uid) })} className="hover:text-indigo-900">&times;</button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Priority</label>
@@ -740,7 +591,7 @@ export default function TasksPage() {
             <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
               <div className="flex gap-4 items-center">
                 {editing && crmUser?.role !== "employee" ? (
-                  <button onClick={() => { deleteTask(editing.id); setShowModal(false); }} className="text-xs font-bold flex items-center text-red-500 hover:text-red-700 hover:underline"><Trash2 className="inline-block w-3.5 h-3.5 shrink-0 mr-1" /> Delete Task</button>
+                  <button onClick={() => { deleteTask(editing.id); setShowModal(false); }} className="text-xs font-bold text-red-500 hover:text-red-700 hover:underline">Delete Task</button>
                 ) : <div/>}
                 {form.taskType === "meeting" && (() => {
                   let timeParams = "";
@@ -780,3 +631,4 @@ export default function TasksPage() {
     </div>
   );
 }
+

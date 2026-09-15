@@ -70,7 +70,7 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
   // Task Delegation State
   const [showDelegateModal, setShowDelegateModal] = useState(false);
   const [delegateForm, setDelegateForm] = useState({
-    employeeId: "",
+    employeeIds: [] as string[],
     title: "",
     instructions: "",
     taskType: "project-task" as SystemTaskType,
@@ -404,7 +404,7 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
 
   async function delegateTask() {
     if (isDelegatingRef.current) return;
-    if (!project || !delegateForm.employeeId || !delegateForm.title) {
+    if (!project || delegateForm.employeeIds.length === 0 || !delegateForm.title) {
       alert("Please specify both an employee and a task title.");
       return;
     }
@@ -423,12 +423,12 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
     setDelegating(true);
     try {
       const now = new Date().toISOString();
-      const employee = users.find(u => u.uid === delegateForm.employeeId);
+      const employee = users.find(u => u.uid === delegateForm.employeeIds);
       
       const payload = {
         title: delegateForm.title,
         description: delegateForm.instructions || `Task for project: ${project.title}`,
-        assignedTo: delegateForm.employeeId,
+        assignedTo: delegateForm.employeeIds,
         assignedToName: employee?.name || "Team Member",
         assignedBy: crmUser?.uid || "System",
         clientId: project.clientId || "",
@@ -451,7 +451,7 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
       const docRef = await addDoc(collection(db, "tasks"), payload);
       
       await addDoc(collection(db, "notifications"), {
-        userId: delegateForm.employeeId,
+        userId: delegateForm.employeeIds,
         title: "Task Assigned",
         message: `You were assigned a new task: ${delegateForm.title}`,
         link: `/tasks/${docRef.id}?tab=blueprints`,
@@ -503,7 +503,7 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
       }
 
       setShowDelegateModal(false);
-      setDelegateForm({ employeeId: "", title: "", instructions: "", taskType: "project-task" as SystemTaskType, dueDate: "", time: "" });
+      setDelegateForm({ employeeIds: [] as string[], title: "", instructions: "", taskType: "project-task" as SystemTaskType, dueDate: "", time: "" });
       alert("Task successfully delegated and assigned!");
     } catch (err: any) {
       console.error(err);
@@ -914,11 +914,29 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
                     {/* Tech Stack Pills */}
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">Core Architecture Stack</label>
-                      <div className="flex items-center gap-2 mt-1 mb-2">
+                      <div className="flex gap-2 mt-1 mb-2">
+                        <select 
+                          className="form-input text-xs py-1.5 px-3 rounded-lg border-slate-200 text-slate-900 bg-white"
+                          onChange={(e) => {
+                            const tech = e.target.value;
+                            if (tech && !techHubForm.techStack.includes(tech)) {
+                              setTechHubForm({ ...techHubForm, techStack: [...techHubForm.techStack, tech] });
+                            }
+                            e.target.value = ""; // Reset
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="" disabled>Select predefined stack...</option>
+                          {/* We don't have SERVICE_TECH_STACKS here, so we use a generic list or the project's service if we had it, but hardcoded fallback is fine */}
+                          {["Next.js", "React", "Tailwind CSS", "Node.js", "Three.js", "Firestore", "GSAP"].map((tech: string) => (
+                            <option key={tech} value={tech} disabled={techHubForm.techStack.includes(tech)}>{tech}</option>
+                          ))}
+                        </select>
+
                         <input
                           type="text"
-                          placeholder="e.g. Three.js, Django..."
-                          className="form-input text-xs py-1.5 px-3 rounded-lg border-slate-200 text-slate-900 bg-white text-slate-900 bg-white"
+                          placeholder="Custom stack... (Press Enter)"
+                          className="form-input text-xs py-1.5 px-3 rounded-lg border-slate-200 text-slate-900 bg-white"
                           value={newTechTag}
                           onChange={(e) => setNewTechTag(e.target.value)}
                           onKeyDown={(e) => {
@@ -932,7 +950,6 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
                             }
                           }}
                         />
-                        <span className="text-[10px] text-slate-400 italic">Press Enter to add</span>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-1">
                         {techHubForm.techStack.map((tech) => (
@@ -1034,28 +1051,31 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
                         <div>
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 pl-1">Primary Focus Scope</span>
                           {editingCoreFocus ? (
-                            <input 
-                              type="text"
+                            <select
                               autoFocus
-                              className="text-xs font-bold bg-white  border border-[#C9A84C] text-[#C9A84C] px-3 py-1.5 rounded-lg shadow-sm outline-none w-48"
+                              className="text-xs font-bold bg-white border border-[#C9A84C] text-[#C9A84C] px-3 py-1.5 rounded-lg shadow-sm outline-none w-48"
                               value={tempCoreFocus}
-                              onChange={e => setTempCoreFocus(e.target.value)}
-                              onBlur={async () => {
+                              onChange={async (e) => {
+                                const newVal = e.target.value;
+                                setTempCoreFocus(newVal);
                                 setEditingCoreFocus(false);
-                                if (tempCoreFocus.trim() !== ((project as any).coreFocus || "Dynamic Web App")) {
-                                  const newVal = tempCoreFocus.trim();
+                                if (newVal.trim() !== ((project as any).coreFocus || "Dynamic Web App")) {
                                   try {
-                                    await updateDoc(doc(db, "projects", project.id), { coreFocus: newVal });
-                                    setProject({ ...project, coreFocus: newVal });
+                                    await updateDoc(doc(db, "projects", project.id), { coreFocus: newVal.trim() });
+                                    setProject({ ...project, coreFocus: newVal.trim() });
                                   } catch (err) { console.error(err); }
                                 }
                               }}
-                              onKeyDown={async (e) => {
-                                if (e.key === 'Enter') {
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                            />
+                              onBlur={() => setEditingCoreFocus(false)}
+                            >
+                              <option value="Dynamic Web App">Dynamic Web App</option>
+                              <option value="Static Branding">Static Branding</option>
+                              <option value="E-Commerce Build">E-Commerce Build</option>
+                              <option value="Enterprise Dashboard">Enterprise Dashboard</option>
+                              <option value="Mobile App">Mobile App</option>
+                              <option value="API / Backend System">API / Backend System</option>
+                              <option value="Other">Other</option>
+                            </select>
                           ) : (
                             <span 
                               onClick={() => {
@@ -1304,7 +1324,7 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
                               >
                                 <option value="">Re-allocate...</option>
                                 {users
-                                  .filter(u => u.role !== "admin")
+                                  
                                   .map(u => (
                                     <option key={u.uid} value={u.uid}>{u.name}</option>
                                   ))
@@ -1878,17 +1898,35 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
                 <label className="block text-xs font-bold text-slate-500 mb-1">Select Employee Asset *</label>
                 <select 
                   className="form-input text-slate-900 bg-white"
-                  value={delegateForm.employeeId}
-                  onChange={e => setDelegateForm({...delegateForm, employeeId: e.target.value})}
+                  onChange={e => {
+                    const uid = e.target.value;
+                    if (!uid) return;
+                    if (!delegateForm.employeeIds.includes(uid)) {
+                      setDelegateForm({...delegateForm, employeeIds: [...delegateForm.employeeIds, uid]});
+                    }
+                    e.target.value = "";
+                  }}
+                  defaultValue=""
                 >
-                  <option value="">Select an employee...</option>
+                  <option value="" disabled>Select an employee...</option>
                   {users
-                    .filter(u => u.role !== "admin")
+                    
                     .map(u => (
                       <option key={u.uid} value={u.uid}>{u.name} ({u.role})</option>
                     ))
                   }
                 </select>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {delegateForm.employeeIds.map(uid => {
+                    const m = users.find(x => x.uid === uid);
+                    return (
+                      <div key={uid} className="flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md text-[10px] font-bold border border-indigo-100">
+                        {m?.name || "Unknown"}
+                        <button type="button" onClick={() => setDelegateForm({...delegateForm, employeeIds: delegateForm.employeeIds.filter(u => u !== uid)})} className="hover:text-indigo-900">&times;</button>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1931,7 +1969,7 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
               </button>
               <button 
                 onClick={delegateTask}
-                disabled={delegating || !delegateForm.employeeId || !delegateForm.title}
+                disabled={delegating || delegateForm.employeeIds.length === 0 || !delegateForm.title}
                 className="flex-1 py-3 text-sm font-bold text-white bg-[#0D1B3E] rounded-xl hover:opacity-90 disabled:opacity-50"
               >
                 {delegating ? "Assigning..." : "Assign Task"}
@@ -1974,7 +2012,7 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
                       setDuplicateConflictTask(null);
                       setDuplicateInstructionNote("");
                       setShowDelegateModal(false);
-                      setDelegateForm({ employeeId: "", title: "", instructions: "", taskType: "project-task", dueDate: "", time: "" });
+                      setDelegateForm({ employeeIds: [], title: "", instructions: "", taskType: "project-task", dueDate: "", time: "" });
                     } catch(e) {
                       console.error(e);
                       alert("Failed to add instructions");

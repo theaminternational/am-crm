@@ -219,10 +219,10 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date()).length > 0 ? (
               tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date()).slice(0, 3).map(t => (
-                <div key={t.id} className="flex justify-between items-center text-xs p-2 bg-red-50 rounded-lg">
+                <Link href={t.relatedType === 'project' && t.relatedTo ? `/projects/${t.relatedTo}` : `/tasks`} key={t.id} className="flex justify-between items-center text-xs p-2 bg-red-50 hover:bg-red-100 transition-colors rounded-lg cursor-pointer">
                   <span className="font-semibold text-red-900 truncate pr-2">{t.title}</span>
                   <span className="text-red-700 whitespace-nowrap">Overdue</span>
-                </div>
+                </Link>
               ))
             ) : (
               <p className="text-xs text-slate-500 italic">No overdue tasks.</p>
@@ -238,10 +238,10 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {leads.filter(l => l.active !== false && l.followUpDate && new Date(l.followUpDate) <= new Date(Date.now() + 86400000)).length > 0 ? (
               leads.filter(l => l.active !== false && l.followUpDate && new Date(l.followUpDate) <= new Date(Date.now() + 86400000)).slice(0, 3).map(l => (
-                <div key={l.id} className="flex justify-between items-center text-xs p-2 bg-amber-50 rounded-lg">
+                <Link href={`/leads?id=${l.id}`} key={l.id} className="flex justify-between items-center text-xs p-2 bg-amber-50 hover:bg-amber-100 transition-colors rounded-lg cursor-pointer">
                   <span className="font-semibold text-amber-900 truncate pr-2">{l.name}</span>
                   <span className="text-amber-700 whitespace-nowrap">{new Date(l.followUpDate).toLocaleDateString()}</span>
-                </div>
+                </Link>
               ))
             ) : (
               <p className="text-xs text-slate-500 italic">No immediate follow-ups.</p>
@@ -257,10 +257,10 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {projects.filter(p => p.status !== "completed" && p.deadline && new Date(p.deadline) <= new Date(Date.now() + 7 * 86400000)).length > 0 ? (
               projects.filter(p => p.status !== "completed" && p.deadline && new Date(p.deadline) <= new Date(Date.now() + 7 * 86400000)).slice(0, 3).map(p => (
-                <div key={p.id} className="flex justify-between items-center text-xs p-2 bg-blue-50 rounded-lg">
+                <Link href={`/projects/${p.id}`} key={p.id} className="flex justify-between items-center text-xs p-2 bg-blue-50 hover:bg-blue-100 transition-colors rounded-lg cursor-pointer">
                   <span className="font-semibold text-blue-900 truncate pr-2">{p.title}</span>
                   <span className="text-blue-700 whitespace-nowrap">Due soon</span>
-                </div>
+                </Link>
               ))
             ) : (
               <p className="text-xs text-slate-500 italic">No projects at risk.</p>

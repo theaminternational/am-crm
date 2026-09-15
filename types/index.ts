@@ -323,8 +323,8 @@ export interface Task {
   id: string;
   title: string;
   description?: string;
-  assignedTo: string;
-  assignedToName?: string;
+  assignedTo: string | string[];
+  assignedToName?: string | string[];
   assignedBy: string;
   clientId?: string;
   clientName?: string;

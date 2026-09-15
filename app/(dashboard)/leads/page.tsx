@@ -9,7 +9,7 @@ import { Lead, ServiceTag, LeadStage } from "@/types";
 import { useAuth } from "@/lib/auth-context";
 import { PipelineService } from "@/lib/pipeline-service";
 import { PhoneInput } from "@/components/phone-input";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "@/components/ui/toast";
 
 const STAGES: { key: LeadStage; label: string; color: string; bg: string; border: string }[] = [
@@ -50,9 +50,26 @@ const EMPTY_FORM = {
   followUpDate: "", notes: "", source: "", nextAction: "",
 };
 
+import { Suspense } from 'react';
+
+function LeadOpener({ leads, setViewingLead, viewingLead }: { leads: any[], setViewingLead: any, viewingLead: any }) {
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (id && leads.length > 0) {
+      const lead = leads.find(l => l.id === id);
+      if (lead && (!viewingLead || viewingLead.id !== id)) {
+        setViewingLead(lead);
+      }
+    }
+  }, [searchParams, leads, viewingLead, setViewingLead]);
+  return null;
+}
+
 export default function LeadsPage() {
   const { crmUser } = useAuth();
   const router = useRouter();
+  
   const [leads, setLeads]       = useState<Lead[]>([]);
   const [loading, setLoading]   = useState(true);
   const [showModal, setShowModal] = useState(false);
